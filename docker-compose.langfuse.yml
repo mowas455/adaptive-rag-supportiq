@@ -1,0 +1,53 @@
+# Langfuse v2 local stack: web + Postgres only.
+# Recreate from scratch if the UI returns 500 (Invalid environment variables):
+#   docker compose -f docker-compose.langfuse.yml down -v && docker compose -f docker-compose.langfuse.yml up -d
+# UI: http://localhost:3000
+# Login: admin@localhost / password123
+
+services:
+  langfuse-server:
+    image: langfuse/langfuse:2
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - NEXTAUTH_SECRET=mysecret
+      - SALT=mysalt
+      - ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
+      - NEXTAUTH_URL=http://localhost:3000
+      - TELEMETRY_ENABLED=false
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=false
+      - LANGFUSE_INIT_ORG_ID=supportiq
+      - LANGFUSE_INIT_ORG_NAME=SupportIQ
+      - LANGFUSE_INIT_PROJECT_ID=supportiq
+      - LANGFUSE_INIT_PROJECT_NAME=SupportIQ
+      - LANGFUSE_INIT_PROJECT_PUBLIC_KEY=lf_pk_supportiq_local
+      - LANGFUSE_INIT_PROJECT_SECRET_KEY=lf_sk_supportiq_local
+      - LANGFUSE_INIT_USER_EMAIL=admin@example.com
+      - LANGFUSE_INIT_USER_NAME=admin
+      - LANGFUSE_INIT_USER_PASSWORD=password123
+
+  db:
+    image: postgres:17
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - langfuse_database_data:/var/lib/postgresql/data
+
+volumes:
+  langfuse_database_data:
+    driver: local

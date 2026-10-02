@@ -78,7 +78,18 @@ streamlit run ui/streamlit_app.py
 python eval/run_eval.py
 ```
 
-Prints routing accuracy by branch (`vectorstore` / `sql_lookup` / `web_search`) and writes a pass/fail score onto each Langfuse trace. Takes several minutes (15 local LLM runs).
+Prints routing accuracy by branch (`vectorstore` / `sql_lookup` / `web_search`) plus lexical `must_contain` hits, groundedness, and citation counts.
+
+## P1 (quality)
+
+Hybrid retrieve (BM25 + vectors), `doc_type` metadata, embedding router with LLM fallback, citations on `/chat`.
+
+```bash
+pip install -r requirements.txt
+python -m src.ingestion.embed_and_store
+python -m src.router.train
+# restart uvicorn so it loads the new index + router
+```
 
 ## Graph (CLI, no API)
 
@@ -99,7 +110,10 @@ src/tools/                      SQLite order lookup + web search
 src/observability/              Langfuse callback + custom scores
 src/api/main.py                 FastAPI /ingest /chat /health
 ui/streamlit_app.py             chat UI + route badge
-eval/golden_qa.json             15 routing questions
+src/retrieval/                hybrid BM25 + vector search
+src/router/                   sklearn 3-way embedding router
+eval/router_train.json        labeled questions for the router
+models/router.joblib          fitted router (after train)
 eval/run_eval.py
 docker-compose.langfuse.yml
 ```

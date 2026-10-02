@@ -7,9 +7,11 @@ from typing import Any, Literal, TypedDict
 RouteName = Literal["vectorstore", "sql_lookup", "web_search"]
 
 
-class RetrievedDoc(TypedDict):
+class RetrievedDoc(TypedDict, total=False):
     content: str
     source: str
+    chunk_index: int
+    doc_type: str
 
 
 class GraphState(TypedDict, total=False):
@@ -28,4 +30,5 @@ class GraphState(TypedDict, total=False):
     groundedness_score: float
     needs_regeneration: bool
     routing_rationale: str
+    router_backend: str
     extra: dict[str, Any]

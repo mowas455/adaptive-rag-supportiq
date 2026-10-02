@@ -3,90 +3,105 @@
     "id": "vs-1",
     "question": "What's your return window?",
     "expected_route": "vectorstore",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["30"]
   },
   {
     "id": "vs-2",
     "question": "How do I start a NexCart return?",
     "expected_route": "vectorstore",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["return"]
   },
   {
     "id": "vs-3",
     "question": "PulseBuds will not pair. What should I try?",
     "expected_route": "vectorstore",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["pair"]
   },
   {
     "id": "vs-rewrite-1",
     "question": "What's the warranty on the NexCart refrigerator?",
     "expected_route": "vectorstore",
-    "expect_retry": true
+    "expect_retry": true,
+    "must_contain": []
   },
   {
     "id": "vs-rewrite-2",
     "question": "Can I return a NexCart electric scooter 45 days after delivery?",
     "expected_route": "vectorstore",
-    "expect_retry": true
+    "expect_retry": true,
+    "must_contain": ["30"]
   },
   {
     "id": "sql-1",
     "question": "Where is order #4521?",
     "expected_route": "sql_lookup",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["4521", "shipped"]
   },
   {
     "id": "sql-2",
     "question": "What's the status of order 4524?",
     "expected_route": "sql_lookup",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["4524"]
   },
   {
     "id": "sql-3",
     "question": "Show orders for priya.desai@example.com",
     "expected_route": "sql_lookup",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["4522"]
   },
   {
     "id": "sql-4",
     "question": "When will order 4527 arrive?",
     "expected_route": "sql_lookup",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["4527"]
   },
   {
     "id": "sql-5",
     "question": "What items are in order 4530?",
     "expected_route": "sql_lookup",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["4530"]
   },
   {
     "id": "web-1",
     "question": "Is there a major UPS outage right now?",
     "expected_route": "web_search",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": ["UPS"]
   },
   {
     "id": "web-2",
     "question": "What's the current weather in Dayton, Ohio?",
     "expected_route": "web_search",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": []
   },
   {
     "id": "web-3",
     "question": "Did Apple announce a new iPhone this week?",
     "expected_route": "web_search",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": []
   },
   {
     "id": "web-4",
     "question": "Are FedEx packages delayed today in the United States?",
     "expected_route": "web_search",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": []
   },
   {
     "id": "web-5",
     "question": "What's moving in US stock markets today?",
     "expected_route": "web_search",
-    "expect_retry": false
+    "expect_retry": false,
+    "must_contain": []
   }
 ]

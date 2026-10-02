@@ -71,6 +71,12 @@ with left:
                     st.badge("retry", color="red")
                 if item.get("trace_url"):
                     st.markdown(f"[Open Langfuse trace]({item['trace_url']})")
+                cites = item.get("citations") or []
+                if cites:
+                    with st.expander(f"Citations ({len(cites)})"):
+                        for c in cites:
+                            st.caption(f"{c.get('source')} · {c.get('doc_type') or ''}")
+                            st.write(c.get("snippet") or "")
 
     prompt = st.chat_input("Ask about returns, an order ID, or a live outage…")
     if prompt:
@@ -95,6 +101,12 @@ with left:
                 st.caption(f"route: {route} · retries: {retries}")
             if data.get("trace_url"):
                 st.markdown(f"[Open Langfuse trace]({data['trace_url']})")
+            cites = data.get("citations") or []
+            if cites:
+                with st.expander(f"Citations ({len(cites)})"):
+                    for c in cites:
+                        st.caption(f"{c.get('source')} · {c.get('doc_type') or ''}")
+                        st.write(c.get("snippet") or "")
         st.session_state.messages.append(
             {
                 "role": "assistant",
@@ -102,5 +114,6 @@ with left:
                 "source_type": route,
                 "retries": retries,
                 "trace_url": data.get("trace_url"),
+                "citations": data.get("citations") or [],
             }
         )

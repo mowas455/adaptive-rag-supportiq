@@ -2,7 +2,7 @@
 # Recreate from scratch if the UI returns 500 (Invalid environment variables):
 #   docker compose -f docker-compose.langfuse.yml down -v && docker compose -f docker-compose.langfuse.yml up -d
 # UI: http://localhost:3000
-# Login: admin@localhost / password123
+# Login: admin@example.com / password123
 
 services:
   langfuse-server:

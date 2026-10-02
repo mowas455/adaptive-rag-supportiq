@@ -35,6 +35,14 @@ class ChatRequest(BaseModel):
     session_id: str = Field(default="default")
 
 
+class Citation(BaseModel):
+    id: int
+    source: str | None = None
+    doc_type: str | None = None
+    chunk_index: int | None = None
+    snippet: str = ""
+
+
 class ChatResponse(BaseModel):
     answer: str
     source_type: str
@@ -43,6 +51,8 @@ class ChatResponse(BaseModel):
     route: str | None = None
     regenerate_count: int = 0
     groundedness_score: float | None = None
+    citations: list[Citation] = Field(default_factory=list)
+    router_backend: str | None = None
 
 
 class IngestResponse(BaseModel):
@@ -89,6 +99,8 @@ def post_chat(body: ChatRequest) -> ChatResponse:
         route=result.get("route"),
         regenerate_count=int(result.get("regenerate_count") or 0),
         groundedness_score=result.get("groundedness_score"),
+        citations=result.get("citations") or [],
+        router_backend=result.get("router_backend"),
     )
 
 

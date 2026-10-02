@@ -145,18 +145,35 @@ def run_supportiq(
         retry_count=retry_count,
         regenerate_count=regenerate_count,
         groundedness_score=groundedness_score,
+        citation_count=len(result.get("retrieved_docs") or []),
     )
     trace_id, trace_url = flush_and_trace_url(handler)
+    citations = []
+    for i, doc in enumerate(result.get("retrieved_docs") or [], 1):
+        snippet = " ".join((doc.get("content") or "").split())
+        if len(snippet) > 220:
+            snippet = snippet[:217] + "..."
+        citations.append(
+            {
+                "id": i,
+                "source": doc.get("source"),
+                "doc_type": doc.get("doc_type"),
+                "chunk_index": doc.get("chunk_index"),
+                "snippet": snippet,
+            }
+        )
     return {
         "answer": result.get("answer", ""),
         "source_type": result.get("source_type", ""),
         "route": route,
         "retrieved_docs": result.get("retrieved_docs", []),
+        "citations": citations,
         "retry_count": retry_count,
         "regenerate_count": regenerate_count,
         "docs_relevant_count": docs_relevant_count,
         "groundedness_score": groundedness_score,
         "routing_rationale": result.get("routing_rationale"),
+        "router_backend": result.get("router_backend"),
         "search_query": result.get("search_query"),
         "trace_id": trace_id,
         "trace_url": trace_url,

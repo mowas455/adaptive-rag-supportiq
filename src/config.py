@@ -37,6 +37,8 @@ API_PORT = int(os.getenv("API_PORT", "8000"))
 RETRIEVE_K = 4
 MAX_REWRITE_RETRIES = 1
 MAX_REGENERATE_RETRIES = 1
+ROUTER_MIN_CONFIDENCE = float(os.getenv("ROUTER_MIN_CONFIDENCE", "0.55"))
+ROUTER_MODEL_PATH = env_path("ROUTER_MODEL_PATH", "models/router.joblib")
 
 INSUFFICIENT_INFO_MESSAGE = (
     "I don't have enough information to answer that reliably from the available sources. "

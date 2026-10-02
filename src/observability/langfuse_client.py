@@ -65,6 +65,7 @@ def log_run_scores(
     retry_count: int,
     regenerate_count: int,
     groundedness_score: float | None,
+    citation_count: int = 0,
 ) -> None:
     if handler is None or getattr(handler, "trace", None) is None:
         return
@@ -93,6 +94,12 @@ def log_run_scores(
         client.score(
             name="groundedness_score",
             value=float(groundedness_score or 0.0),
+            data_type="NUMERIC",
+            trace_id=trace_id,
+        )
+        client.score(
+            name="citation_count",
+            value=float(citation_count),
             data_type="NUMERIC",
             trace_id=trace_id,
         )

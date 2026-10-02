@@ -28,6 +28,8 @@ from src.graph.schemas import (
     RouteDecision,
 )
 from src.graph.state import GraphState, RetrievedDoc
+from src.retrieval.hybrid import hybrid_search
+from src.router.embed_router import route_question
 from src.tools.sql_tool import extract_email, extract_order_id, format_orders, lookup_orders
 from src.tools.web_search_tool import format_results, search_web
 
@@ -90,43 +92,45 @@ def _docs_to_context(docs: list[RetrievedDoc]) -> str:
         return "(no context)"
     parts = []
     for i, doc in enumerate(docs, 1):
-        parts.append(f"[doc {i} | {doc.get('source', 'unknown')}]\n{doc['content']}")
+        parts.append(
+            f"[doc {i} | {doc.get('source', 'unknown')} | {doc.get('doc_type', '')}]\n{doc['content']}"
+        )
     return "\n\n".join(parts)
 
 
 def classify_query(state: GraphState, config: RunnableConfig | None = None) -> dict:
     question = state["question"]
-    decision = structured_invoke(
-        RouteDecision,
-        [
-            SystemMessage(content=CLASSIFY_SYSTEM),
-            HumanMessage(content=f"User question:\n{question}"),
-        ],
-        config=config,
-    )
+    route, backend, rationale, confidence = route_question(question)
+    if backend == "needs_llm":
+        decision = structured_invoke(
+            RouteDecision,
+            [
+                SystemMessage(content=CLASSIFY_SYSTEM),
+                HumanMessage(content=f"User question:\n{question}"),
+            ],
+            config=config,
+        )
+        route = decision.source
+        rationale = f"{rationale}; LLM: {decision.rationale}"
+        backend = "llm"
     return {
-        "route": decision.source,
-        "source_type": decision.source,
+        "route": route,
+        "source_type": route,
         "search_query": question,
-        "routing_rationale": decision.rationale,
+        "routing_rationale": rationale,
+        "router_backend": backend,
         "retry_count": state.get("retry_count", 0),
         "regenerate_count": state.get("regenerate_count", 0),
         "documents": [],
         "retrieved_docs": [],
         "needs_regeneration": False,
+        "extra": {"router_confidence": confidence},
     }
 
 
 def retrieve(state: GraphState, config: RunnableConfig | None = None) -> dict:
     query = state.get("search_query") or state["question"]
-    hits = _vectorstore().similarity_search(query, k=RETRIEVE_K)
-    documents: list[RetrievedDoc] = [
-        {
-            "content": doc.page_content,
-            "source": str(doc.metadata.get("source_file") or doc.metadata.get("source") or "vectorstore"),
-        }
-        for doc in hits
-    ]
+    documents = hybrid_search(_vectorstore(), query, k=RETRIEVE_K)
     return {
         "documents": documents,
         "retrieved_docs": documents,
@@ -199,7 +203,9 @@ def sql_lookup(state: GraphState, config: RunnableConfig | None = None) -> dict:
     content = format_orders(rows)
     if order_id or email:
         content += f"\n\nLookup keys: order_id={order_id!r}, email={email!r}"
-    documents: list[RetrievedDoc] = [{"content": content, "source": "orders.db"}]
+    documents: list[RetrievedDoc] = [
+        {"content": content, "source": "orders.db", "chunk_index": 0, "doc_type": "orders"}
+    ]
     return {
         "documents": documents,
         "retrieved_docs": documents,
@@ -216,11 +222,13 @@ def web_search(state: GraphState, config: RunnableConfig | None = None) -> dict:
         {
             "content": f"{item.get('title', '')}\n{item.get('url', '')}\n{item.get('snippet', '')}",
             "source": item.get("url") or "web_search",
+            "chunk_index": i,
+            "doc_type": "web",
         }
-        for item in results
+        for i, item in enumerate(results)
     ]
     if not documents:
-        documents = [{"content": content, "source": "web_search"}]
+        documents = [{"content": content, "source": "web_search", "chunk_index": 0, "doc_type": "web"}]
     return {
         "documents": documents,
         "retrieved_docs": documents,

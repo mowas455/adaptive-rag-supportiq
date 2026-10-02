@@ -43,6 +43,11 @@ def main() -> None:
             result.get("regenerate_count") or 0
         ) > 0
         passed = actual == expected
+        answer = (result.get("answer") or "").lower()
+        needles = [n.lower() for n in (item.get("must_contain") or [])]
+        lexical = all(n in answer for n in needles) if needles else None
+        grounded = result.get("groundedness_score") == 1.0
+        n_cite = len(result.get("citations") or [])
         by_branch[expected].append(passed)
         if result.get("trace_id") and langfuse is not None:
             try:
@@ -66,10 +71,18 @@ def main() -> None:
                 "expect_retry": bool(item.get("expect_retry")),
                 "source_type": result.get("source_type"),
                 "trace_url": result.get("trace_url"),
+                "lexical": lexical,
+                "grounded": grounded,
+                "citations": n_cite,
+                "backend": result.get("router_backend"),
             }
         )
         mark = "PASS" if passed else "FAIL"
-        print(f"  {mark}  expected={expected} actual={actual} retry={retried}")
+        print(
+            f"  {mark}  expected={expected} actual={actual} retry={retried} "
+            f"grounded={grounded} cites={n_cite} lexical={lexical} "
+            f"backend={result.get('router_backend')}"
+        )
 
     print("\n=== Routing accuracy by branch ===")
     print(f"{'branch':<16} {'n':>4} {'pass':>4} {'acc':>8}")
@@ -85,13 +98,30 @@ def main() -> None:
     overall = (total_p / total_n) if total_n else 0.0
     print(f"{'OVERALL':<16} {total_n:>4} {total_p:>4} {overall:>7.0%}")
 
-    print("\n=== Detail ===")
-    print(f"{'id':<16} {'exp':<12} {'act':<12} {'ok':<5} {'retry':<6} {'want_retry'}")
+    lex_n = lex_p = g_n = g_p = 0
     for row in rows:
+        if row["lexical"] is not None:
+            lex_n += 1
+            lex_p += int(bool(row["lexical"]))
+        g_n += 1
+        g_p += int(bool(row["grounded"]))
+    print(
+        f"\nLexical must_contain: {lex_p}/{lex_n}  "
+        f"Groundedness==1.0: {g_p}/{g_n}"
+    )
+
+    print("\n=== Detail ===")
+    print(
+        f"{'id':<16} {'exp':<12} {'act':<12} {'ok':<5} {'lex':<5} "
+        f"{'gnd':<5} {'cite':<5} {'backend'}"
+    )
+    for row in rows:
+        lex = "-" if row["lexical"] is None else ("Y" if row["lexical"] else "N")
         print(
             f"{row['id']:<16} {row['expected']:<12} {str(row['actual']):<12} "
-            f"{'Y' if row['pass'] else 'N':<5} {'Y' if row['retry'] else 'N':<6} "
-            f"{'Y' if row['expect_retry'] else 'N'}"
+            f"{'Y' if row['pass'] else 'N':<5} {lex:<5} "
+            f"{'Y' if row['grounded'] else 'N':<5} {row['citations']:<5} "
+            f"{row.get('backend') or '-'}"
         )
 
 

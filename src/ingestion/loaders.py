@@ -8,7 +8,14 @@ from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# ~500 tokens per chunk, 50-token overlap (tiktoken cl100k_base approximation).
+DOC_TYPES = {
+    "return_policy.md": "policy",
+    "shipping_faq.md": "shipping",
+    "product_troubleshooting.md": "troubleshooting",
+    "account_billing_faq.md": "billing",
+    "glowbar_product_manual.md": "product",
+}
+
 CHUNK_SIZE_TOKENS = 500
 CHUNK_OVERLAP_TOKENS = 50
 
@@ -46,6 +53,7 @@ def chunk_documents(documents: list[Document]) -> list[Document]:
         source = Path(str(chunk.metadata.get("source", "unknown"))).name
         chunk.metadata["chunk_index"] = i
         chunk.metadata["source_file"] = source
+        chunk.metadata["doc_type"] = DOC_TYPES.get(source, "other")
     return chunks
 
 

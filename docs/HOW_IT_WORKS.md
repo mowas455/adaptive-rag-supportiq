@@ -44,7 +44,7 @@ are explicit, not a pile of `if` statements.
 6. **P1 quality** — hybrid retrieve, `doc_type` metadata, embedding router, citations  
    Golden routing after P1: **15/15 (100%)**. Lexical `must_contain` and groundedness are extra scores; they can still fail on SQL/web answers.
 7. **PDF knowledge base** — PyMuPDF layout extract; citations are file + page + bbox/polygon; `/pdf-preview` renders the page
-8. **Production folders + console** — `ai/` (RAG), `backend/` (FastAPI), `frontend/` (React). Streamlit is not the product UI. Ruff is the Python linter.
+8. **Production folders + console** — `ai/` (RAG), `backend/` (FastAPI), `frontend/` (React). Ruff is the Python linter.
 9. **Observability on the same screen** — this-run metrics + Langfuse graph steps via `GET /traces/{id}` (the Langfuse web UI cannot be iframed)
 10. **Token counts for both local models** — Ollama `prompt_eval_count` / `eval_count` for llama3.2 and nomic-embed-text, returned on `/chat` as `usage` and scored in Langfuse
 
@@ -54,7 +54,6 @@ are explicit, not a pile of `if` statements.
 frontend/     Vite + React — chat, PDF evidence, inspector
 backend/      FastAPI — /chat /ingest /health /pdf-preview /traces/{id}
 ai/           ingest, graph, hybrid retrieve, embed router, tools
-src/api/      one-line shim so old uvicorn command still works
 ```
 
 Vite proxies `/api` → `http://127.0.0.1:8000`.

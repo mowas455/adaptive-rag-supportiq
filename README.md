@@ -11,10 +11,9 @@ Layout is split the way a production app is split:
 | `frontend/` | React + Vite console (chat, PDF evidence, observability) |
 | `backend/` | FastAPI HTTP surface |
 | `ai/` | Ingest, LangGraph, retrieve, router, tools, Langfuse, token usage |
-| `src/api/main.py` | Compatibility shim: `uvicorn src.api.main:app` still works |
 
 Everything runs on the laptop: Ollama (`llama3.2` + `nomic-embed-text`), Chroma,
-SQLite, and self-hosted Langfuse. Streamlit under `ui/` is leftover, not the product UI.
+SQLite, and self-hosted Langfuse. The product UI is the React console.
 
 Onboarding (problem, pipelines, graph, citations, tokens):
 [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)
@@ -144,9 +143,7 @@ backend/                  FastAPI
 ai/                       RAG pipeline
 ai/observability/         Langfuse + per-request token accounting
 ai/ingestion/             PDF layout extract, preview PNG, embed
-src/api/main.py           shim → backend.main:app
 data/pdfs/                NexCart PDFs (ingest source)
 data/docs/                markdown used to generate the PDFs
 eval/                     golden set
-ui/streamlit_app.py       legacy; do not use as the console
 ```

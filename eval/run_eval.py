@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.graph.build_graph import run_supportiq  # noqa: E402
-from src.observability.langfuse_client import get_langfuse  # noqa: E402
+from ai.graph.build_graph import run_supportiq  # noqa: E402
+from ai.observability.langfuse_client import get_langfuse  # noqa: E402
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_qa.json"
 

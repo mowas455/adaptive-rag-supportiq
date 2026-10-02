@@ -1,0 +1,21 @@
+[project]
+name = "supportiq"
+version = "0.2.0"
+description = "NexCart Adaptive RAG support assistant"
+requires-python = ">=3.12"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+include = ["ai*", "backend*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["ai", "backend", "eval"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"

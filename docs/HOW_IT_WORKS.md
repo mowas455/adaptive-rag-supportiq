@@ -1,8 +1,6 @@
 # How SupportIQ works
 
-Onboarding note for anyone opening this repo cold. A visual version of the
-same story lives in the Cursor canvas
-`supportiq-adaptive-rag-guide.canvas.tsx` (open beside chat).
+Onboarding note for anyone opening this repo cold.
 
 ## 1. Business problem
 
@@ -38,60 +36,65 @@ are explicit, not a pile of `if` statements.
 ## 3. What we built (phases)
 
 0. Local env: Python 3.12, Ollama `llama3.2` + `nomic-embed-text`, Langfuse v2 Docker
-1. Ingest markdown → Chroma; seed SQLite orders
+1. Ingest → Chroma; seed SQLite orders
 2. LangGraph nodes + conditional edges
 3. Langfuse traces + scores
 4. FastAPI `/health` `/ingest` `/chat`
-5. Streamlit chat UI
-6. 15-question routing eval
-7. **P1 quality** — hybrid retrieve, `doc_type` metadata, embedding router, citations  
+5. 15-question routing eval
+6. **P1 quality** — hybrid retrieve, `doc_type` metadata, embedding router, citations  
    Golden routing after P1: **15/15 (100%)**. Lexical `must_contain` and groundedness are extra scores; they can still fail on SQL/web answers.
+7. **PDF knowledge base** — PyMuPDF layout extract; citations are file + page + bbox/polygon; `/pdf-preview` renders the page
+8. **Production folders + console** — `ai/` (RAG), `backend/` (FastAPI), `frontend/` (React). Streamlit is not the product UI. Ruff is the Python linter.
+9. **Observability on the same screen** — this-run metrics + Langfuse graph steps via `GET /traces/{id}` (the Langfuse web UI cannot be iframed)
+10. **Token counts for both local models** — Ollama `prompt_eval_count` / `eval_count` for llama3.2 and nomic-embed-text, returned on `/chat` as `usage` and scored in Langfuse
 
-## 4. Offline pipeline (ingest)
+## 4. Repo map
 
 ```
-data/docs/*.md
+frontend/     Vite + React — chat, PDF evidence, inspector
+backend/      FastAPI — /chat /ingest /health /pdf-preview /traces/{id}
+ai/           ingest, graph, hybrid retrieve, embed router, tools
+src/api/      one-line shim so old uvicorn command still works
+```
+
+Vite proxies `/api` → `http://127.0.0.1:8000`.
+
+## 5. Offline pipeline (ingest)
+
+```
+data/pdfs/*.pdf
         │
         ▼
-  load markdown
+  PyMuPDF layout extract
+  (drop header/footer, cluster lines)
         │
         ▼
-  chunk (~500 tokens, 50 overlap)
-  + metadata: source_file, chunk_index, doc_type
-    (policy / shipping / troubleshooting / billing / product)
+  region chunks (~500 tokens)
+  + metadata: source_file, page, bbox, polygon, polygon_norm, doc_type
         │
         ▼
   embed with nomic-embed-text
         │
         ▼
-  persist Chroma  ./chroma_db  (11 chunks)
+  persist Chroma  ./chroma_db
 ```
 
-In parallel: seed `data/orders.db` (10 rows, including order `4521`).
+Two NexCart PDFs (generated, not downloaded):
 
-Separately, train the 3-way router (once, or after you change labels):
+- `nexcart_return_exchange_policy.pdf` — return window, how to return, warranty
+- `nexcart_product_troubleshooting.pdf` — PulseBuds, HomePlug, LockStep, GlowBar
 
-```
-eval/router_train.json   (question → vectorstore | sql_lookup | web_search)
-        │
-        ▼
-  embed questions with nomic-embed-text
-        │
-        ▼
-  fit LogisticRegression
-        │
-        ▼
-  models/router.joblib
-```
+Markdown in `data/docs/` is unused at ingest time. A citation is **file + page + bounding quad**, not a filename alone. The evidence pane loads `/pdf-preview?source=&page=&x0=&y0=&x1=&y1=` and draws that region.
 
 Commands:
 
 ```bash
-python -m src.ingestion.embed_and_store
-python -m src.router.train
+python -m ai.ingestion.make_nexcart_pdfs
+python -m ai.ingestion.embed_and_store
+python -m ai.router.train
 ```
 
-## 5. Online pipeline (every question)
+## 6. Online pipeline (every question)
 
 **Happy path** — three doors, then the same last step (no arrows going backward):
 
@@ -112,14 +115,20 @@ flowchart LR
 ```mermaid
 flowchart LR
   Dbad[Docs were useless] --> RW[Rewrite question] --> D2[Search docs again]
-  D2 -->|still useless| W2[Use web instead]
+  D2 -->|still empty and route was vectorstore| A[Answer from kept docs]
+  D2 -->|still empty and route was not vectorstore| W2[Use web instead]
   Abad[Answer not grounded] --> A2[Write answer again]
   A2 -->|still not grounded| Stop[Say I don't know]
 ```
 
-The LangGraph code still has cycles; they are capped at 1 rewrite and 1 regeneration. These pictures are the same logic without drawing loops.
+If classify chose **vectorstore**, we do **not** fall through to web search after a
+failed grade. Short PDF chunks used to be marked irrelevant, which sent every
+policy question to DuckDuckGo. The grader is lenient on short snippets; leftover
+docs are still passed to generate.
 
-**Classify is not “always llama3.2.”** `classify_query` calls `route_question` (`src/router/embed_router.py`):
+The LangGraph code still has cycles; they are capped at 1 rewrite and 1 regeneration.
+
+**Classify is not “always llama3.2.”** `classify_query` calls `route_question` (`ai/router/embed_router.py`):
 
 ```
 question
@@ -132,14 +141,14 @@ question
 
 The `/chat` field `router_backend` is `heuristic`, `sklearn`, or `llm`.
 
-**Retrieve is not vectors-only.** `retrieve` calls `hybrid_search` (`src/retrieval/hybrid.py`): Chroma similarity **plus** BM25 over the collection, fused with reciprocal rank fusion (RRF), plus a small boost if `doc_type` matches the question (e.g. “pair” → troubleshooting).
+**Retrieve is not vectors-only.** `retrieve` calls `hybrid_search` (`ai/retrieval/hybrid.py`): Chroma similarity **plus** BM25 over the collection, fused with reciprocal rank fusion (RRF), plus a small boost if `doc_type` matches the question (e.g. “pair” → troubleshooting).
 
-## 6. Graph nodes (what each step is)
+## 7. Graph nodes (what each step is)
 
 | Node | Role | Model / system |
 |---|---|---|
 | `classify_query` | Pick vectorstore / sql / web | heuristic → sklearn on embeddings → llama3.2 `RouteDecision` only if needed |
-| `retrieve` | Hybrid search k=4 | Chroma + BM25 (RRF) + `doc_type` hint |
+| `retrieve` | Hybrid search k=4 | PDF layout chunks (page + polygon) via Chroma + BM25 |
 | `grade_documents` | Keep only useful chunks | llama3.2 + `DocumentGrades` |
 | `rewrite_query` | Better search query | llama3.2 + `RewrittenQuery` |
 | `sql_lookup` | Order id / email → row | SQLite |
@@ -147,29 +156,48 @@ The `/chat` field `router_backend` is `heuristic`, `sklearn`, or `llm`.
 | `generate` | Answer from context only | llama3.2 |
 | `grade_answer` | Groundedness check | llama3.2 + `AnswerGrade` |
 
-State is a `TypedDict` in `src/graph/state.py`. Wiring is
-`src/graph/build_graph.py` (`add_conditional_edges`, not ad-hoc if/else).
+State is a `TypedDict` in `ai/graph/state.py`. Wiring is
+`ai/graph/build_graph.py` (`add_conditional_edges`, not ad-hoc if/else).
 
-## 7. Tools map
+## 8. Token consumption (both models)
+
+Every `/chat` call starts a per-request counter (`ai/observability/usage.py`).
+
+| Model | What we count | Where it comes from |
+|---|---|---|
+| `llama3.2` | prompt (in) + completion (out) tokens, call count | Ollama `prompt_eval_count` / `eval_count` on chat responses (`usage_metadata` / `response_metadata`) |
+| `nomic-embed-text` | prompt tokens, call count | Ollama `/api/embed` `prompt_eval_count` (query embed + hybrid retrieve) |
+
+Those totals are:
+
+- returned as `ChatResponse.usage`
+- shown on Observability → **This run** (and copied onto the Langfuse tab)
+- written as Langfuse scores: `llama_prompt_tokens`, `llama_completion_tokens`, `nomic_embed_tokens`
+
+Ingest embeddings (building Chroma) are **not** billed to a chat request. Only
+embeds that happen while answering.
+
+## 9. Tools map
 
 | Layer | Tool | Why |
 |---|---|---|
 | LLM | Ollama `llama3.2` | Local, no paid API |
 | Embeddings | Ollama `nomic-embed-text` | Local 768-d vectors |
 | Orchestration | LangGraph | Branches + cycles with limits |
-| Loaders / splitters | LangChain | Standard RAG glue |
+| Loaders / splitters | PyMuPDF + LangChain | PDF line boxes, then optional MD fallback |
 | Vector DB | Chroma embedded | No extra server |
 | Keyword retrieve | BM25 (`rank-bm25`) | Exact words fused with vectors |
 | Router | sklearn LogisticRegression | 3-way classify on nomic embeddings |
 | Orders | SQLite | Structured route |
 | Web | DuckDuckGo | No search API key |
-| Tracing | Langfuse v2 | See routing and grades |
-| API | FastAPI | `/chat` returns `trace_url`, `citations`, `router_backend` |
-| UI | Streamlit | Route badge, citations expander, trace link |
+| Tracing | Langfuse v2 | Routing, grades, token scores |
+| API | FastAPI | `/chat` returns `trace_url`, `citations`, `usage` |
+| UI | React (`frontend/`) | Chat + PDF highlight + inspector |
+| Lint | Ruff | `ai`, `backend`, `eval` |
 
 Everything except web search runs on the laptop.
 
-## 8. Core RAG concepts (so you can improve it)
+## 10. Core RAG concepts (so you can improve it)
 
 **Retrieval-Augmented Generation** = do not ask the LLM to memorize the
 company. At ask-time, fetch evidence, then generate *conditioned on that
@@ -185,46 +213,56 @@ Pieces you will keep meeting:
 4. **Hybrid retrieve** — vectors catch paraphrases; BM25 catches exact tokens
    (“30 days”, “pair”). RRF merges both ranked lists.
 5. **Grounding** — the answer must be supported by retrieved text. That is
-   what `grade_answer` is for. Citations (`source_file`, `doc_type`, snippet)
-   show which chunks were used.
+   what `grade_answer` is for. Citations are file, **page**, **bbox**, and a
+   4-corner **polygon** (PDF points + 0–1 normalized) so you can highlight the
+   region on the page.
 6. **Routing** — not every question is a vector question. Rules catch IDs;
    a tiny classifier on embeddings handles the rest; LLM is the fallback.
-7. **Fallback** — if internal memory fails, web search (Corrective RAG).
+7. **Fallback** — web search is for live/out-of-scope questions, not for
+   “the PDF chunk was short.”
 
-## 9. How to run and watch it
+## 11. How to run and watch it
 
 ```bash
 source .venv/bin/activate
 docker compose -f docker-compose.langfuse.yml up -d
-python -m src.ingestion.embed_and_store   # if chroma_db missing
-python -m src.router.train                # if models/router.joblib missing
-uvicorn src.api.main:app --host 127.0.0.1 --port 8000
+python -m ai.ingestion.make_nexcart_pdfs
+python -m ai.ingestion.embed_and_store   # if chroma_db missing
+python -m ai.router.train                # if models/router.joblib missing
+uvicorn backend.main:app --host 127.0.0.1 --port 8000
 # other terminal:
-streamlit run ui/streamlit_app.py
+cd frontend && npm install && npm run dev
 ```
 
 Langfuse UI: http://localhost:3000 — `admin@example.com` / `password123`.
+Console: http://localhost:5173.
 
 Ask:
 
 - `What's your return window?` → `vectorstore`
+- `PulseBuds will not pair` → `vectorstore` (PDF troubleshooting + page highlight)
 - `Where is order #4521?` → `sql_lookup`
 - `Is there a major UPS outage right now?` → `web_search`
 
-Open `trace_url` in the JSON/UI to see classify → retrieve → grades.
+After an answer, Observability → This run shows route, grades, llama3.2 tokens,
+and nomic-embed tokens. Langfuse tab lists scores and graph step names (fetched
+through our API, not an iframe).
 
-Eval: `python eval/run_eval.py` (slow: 15 full graph runs). Prints routing
-accuracy by branch, lexical `must_contain`, groundedness==1.0, citation counts,
-and `router_backend`.
+Eval: `python eval/run_eval.py` (slow: 15 full graph runs).
 
-## 10. Sensible next experiments
+Stop:
 
-P1 is done (hybrid retrieve, trained router, citations). Remaining:
+```bash
+lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill
+docker compose -f docker-compose.langfuse.yml down
+```
 
-- Tighten SQL/web generation so lexical + groundedness match routing (P2)
+## 12. Sensible next experiments
+
+- Tighten SQL/web generation so lexical + groundedness match routing
 - Human labels for *answer quality*, not only routing accuracy
 - Qdrant instead of Chroma; real orders API instead of SQLite
 - Fourth route: past support tickets
 
-Start by reading `src/graph/nodes.py` then `src/graph/build_graph.py`.
+Start by reading `ai/graph/nodes.py` then `ai/graph/build_graph.py`.
 That is the whole Adaptive RAG loop in code.

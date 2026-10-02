@@ -1,31 +1,43 @@
 # SupportIQ — Adaptive RAG Customer Support Assistant
 
-Local Adaptive RAG system for a fictional mid-size e-commerce company (**NexCart**).
-Queries are routed to a vector knowledge base, a SQLite orders table, or web search,
-then graded and optionally retried. Everything runs on your laptop: Ollama, Chroma,
-SQLite, and self-hosted Langfuse.
+Local Adaptive RAG for a fictional mid-size e-commerce company (**NexCart**).
+Each question is routed to a vector knowledge base, a SQLite orders table, or
+web search, then graded and optionally retried.
+
+Layout is split the way a production app is split:
+
+| Folder | Role |
+|---|---|
+| `frontend/` | React + Vite console (chat, PDF evidence, observability) |
+| `backend/` | FastAPI HTTP surface |
+| `ai/` | Ingest, LangGraph, retrieve, router, tools, Langfuse, token usage |
+| `src/api/main.py` | Compatibility shim: `uvicorn src.api.main:app` still works |
+
+Everything runs on the laptop: Ollama (`llama3.2` + `nomic-embed-text`), Chroma,
+SQLite, and self-hosted Langfuse. Streamlit under `ui/` is leftover, not the product UI.
+
+Onboarding (problem, pipelines, graph, citations, tokens):
+[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)
 
 ## Prerequisites
 
 - Python 3.12
+- Node.js + npm (frontend)
 - [Ollama](https://ollama.com) with `llama3.2:latest` and `nomic-embed-text:latest`
-  already pulled (`ollama list` — do not pull models in this project)
-- Docker Desktop (for Langfuse)
-
-Onboarding (problem, RAG vs Adaptive RAG, every pipeline step, diagrams):
-
-- [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)
+  already pulled (`ollama list`)
+- Docker Desktop (Langfuse)
 
 ## Setup
 
 ```bash
-cd /Users/mownieshasokan/adaptive-rag-supportiq
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 ollama list
 ```
+
+Lint Python with `ruff check ai backend eval` (`pyproject.toml`).
 
 ## 1. Langfuse
 
@@ -35,18 +47,33 @@ docker compose -f docker-compose.langfuse.yml up -d
 
 Open [http://localhost:3000](http://localhost:3000). Login: `admin@example.com` / `password123`.
 
-## 2. Ingest knowledge base + orders
+The console **does not iframe** Langfuse (login + `X-Frame-Options` block it). It
+loads `/traces/{id}` through our API instead. Use **Open full Langfuse UI** for
+the hosted page.
+
+Stop Langfuse (file name is required; there is no default `compose.yaml`):
 
 ```bash
-python -m src.ingestion.embed_and_store
+docker compose -f docker-compose.langfuse.yml down
 ```
 
-Or via API after the server is up: `curl -X POST http://127.0.0.1:8000/ingest`
+## 2. Ingest knowledge base + orders
 
-## 3. FastAPI
+PDFs in `data/pdfs/` are the knowledge base (page + bbox extract). Markdown
+under `data/docs/` is only used to author those PDFs.
 
 ```bash
-uvicorn src.api.main:app --host 127.0.0.1 --port 8000
+python -m ai.ingestion.make_nexcart_pdfs
+python -m ai.ingestion.embed_and_store
+python -m ai.router.train   # optional; writes models/router.joblib
+```
+
+Or after the API is up: `curl -X POST http://127.0.0.1:8000/ingest`
+
+## 3. Backend API
+
+```bash
+uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
 ```bash
@@ -54,23 +81,40 @@ curl http://127.0.0.1:8000/health
 curl -s -X POST http://127.0.0.1:8000/chat \
   -H 'Content-Type: application/json' \
   -d '{"question":"What'\''s your return window?","session_id":"demo"}'
-curl -s -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Where is order #4521?","session_id":"demo"}'
-curl -s -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"Is there a major UPS outage right now?","session_id":"demo"}'
 ```
 
-Each `/chat` response includes `source_type`, `retries`, and `trace_url` (open that URL in Langfuse).
+`/chat` returns `route`, `citations` (page + polygon), `trace_id` / `trace_url`,
+and `usage` for **both** local models:
 
-## 4. Streamlit UI
+```json
+"usage": {
+  "llm": { "model": "llama3.2", "prompt_tokens": 963, "completion_tokens": 90, "total_tokens": 1053, "calls": 3 },
+  "embedding": { "model": "nomic-embed-text", "prompt_tokens": 16, "calls": 2 }
+}
+```
 
-With the API already running:
+Other routes: `GET /pdf-preview`, `GET /traces/{trace_id}`.
+
+Stop the API (PID, not the port number):
 
 ```bash
-streamlit run ui/streamlit_app.py
+lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill
 ```
+
+## 4. Console UI (React)
+
+With the API running:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). Vite proxies `/api` to
+`http://127.0.0.1:8000`. Three panes: conversation, PDF evidence with highlight,
+observability (this-run metrics including llama3.2 + nomic tokens, plus Langfuse
+steps/scores).
 
 ## 5. Golden-set eval
 
@@ -78,42 +122,31 @@ streamlit run ui/streamlit_app.py
 python eval/run_eval.py
 ```
 
-Prints routing accuracy by branch (`vectorstore` / `sql_lookup` / `web_search`) plus lexical `must_contain` hits, groundedness, and citation counts.
-
-## P1 (quality)
-
-Hybrid retrieve (BM25 + vectors), `doc_type` metadata, embedding router with LLM fallback, citations on `/chat`.
-
-```bash
-pip install -r requirements.txt
-python -m src.ingestion.embed_and_store
-python -m src.router.train
-# restart uvicorn so it loads the new index + router
-```
+Routing accuracy by branch (`vectorstore` / `sql_lookup` / `web_search`), lexical
+`must_contain`, groundedness, citations.
 
 ## Graph (CLI, no API)
 
 ```bash
-python -m src.graph.build_graph --mermaid
-python -m src.graph.build_graph "What's your return window?"
+python -m ai.graph.build_graph --mermaid
+python -m ai.graph.build_graph "What's your return window?"
 ```
 
-Control flow: classify → retrieve/sql/web → grade docs → at most one rewrite+retrieve then web fallback → generate → grade answer (regenerate once, then abstain).
+Control flow: classify → retrieve/sql/web → grade docs → at most one
+rewrite+retrieve (vectorstore stays on docs; no CRAG web hop) → generate →
+grade answer (regenerate once, then abstain).
 
 ## Repo layout
 
 ```
-data/docs/                      sample policy / FAQ / manual markdown
-src/ingestion/                  loaders, Chroma embed, orders seed
-src/graph/                      LangGraph state, nodes, compiled graph
-src/tools/                      SQLite order lookup + web search
-src/observability/              Langfuse callback + custom scores
-src/api/main.py                 FastAPI /ingest /chat /health
-ui/streamlit_app.py             chat UI + route badge
-src/retrieval/                hybrid BM25 + vector search
-src/router/                   sklearn 3-way embedding router
-eval/router_train.json        labeled questions for the router
-models/router.joblib          fitted router (after train)
-eval/run_eval.py
-docker-compose.langfuse.yml
+frontend/                 React console
+backend/                  FastAPI
+ai/                       RAG pipeline
+ai/observability/         Langfuse + per-request token accounting
+ai/ingestion/             PDF layout extract, preview PNG, embed
+src/api/main.py           shim → backend.main:app
+data/pdfs/                NexCart PDFs (ingest source)
+data/docs/                markdown used to generate the PDFs
+eval/                     golden set
+ui/streamlit_app.py       legacy; do not use as the console
 ```

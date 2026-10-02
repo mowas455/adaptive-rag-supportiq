@@ -1,1 +1,1 @@
-"""SupportIQ Adaptive RAG package."""
+"""Shim package so older uvicorn commands keep resolving."""

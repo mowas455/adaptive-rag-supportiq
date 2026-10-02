@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from urllib.parse import urlencode
 
 import httpx
 import streamlit as st
@@ -35,6 +36,31 @@ def _health() -> dict | None:
             return resp.json()
     except Exception:
         return None
+
+
+def _citation_block(c: dict) -> None:
+    source = c.get("source") or "unknown"
+    page = c.get("page")
+    bbox = c.get("bbox") or {}
+    if page and str(source).endswith(".pdf"):
+        params = {"source": source, "page": int(page)}
+        if bbox:
+            params.update(
+                {
+                    "x0": bbox.get("x0"),
+                    "y0": bbox.get("y0"),
+                    "x1": bbox.get("x1"),
+                    "y1": bbox.get("y1"),
+                }
+            )
+        st.image(
+            f"{API_URL}/pdf-preview?{urlencode(params)}",
+            caption=f"{source}  ·  page {page}",
+            width=520,
+        )
+    elif c.get("snippet"):
+        st.caption(source)
+        st.write(c.get("snippet") or "")
 
 
 st.set_page_config(page_title="SupportIQ", page_icon="🧭", layout="wide")
@@ -75,8 +101,7 @@ with left:
                 if cites:
                     with st.expander(f"Citations ({len(cites)})"):
                         for c in cites:
-                            st.caption(f"{c.get('source')} · {c.get('doc_type') or ''}")
-                            st.write(c.get("snippet") or "")
+                            _citation_block(c)
 
     prompt = st.chat_input("Ask about returns, an order ID, or a live outage…")
     if prompt:
@@ -105,8 +130,7 @@ with left:
             if cites:
                 with st.expander(f"Citations ({len(cites)})"):
                     for c in cites:
-                        st.caption(f"{c.get('source')} · {c.get('doc_type') or ''}")
-                        st.write(c.get("snippet") or "")
+                        _citation_block(c)
         st.session_state.messages.append(
             {
                 "role": "assistant",

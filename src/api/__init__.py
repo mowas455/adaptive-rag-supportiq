@@ -1,1 +1,1 @@
-"""API package."""
+"""Shim for ``uvicorn src.api.main:app``."""

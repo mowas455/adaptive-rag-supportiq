@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
 
 from ai.config import OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, ROUTER_MODEL_PATH  # noqa: E402
 
-TRAIN_PATH = ROOT / "eval" / "router_train.json"
+TRAIN_PATH = Path(__file__).resolve().parents[1] / "eval" / "router_train.json"
 
 
 def main() -> None:

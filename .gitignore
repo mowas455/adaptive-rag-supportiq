@@ -11,6 +11,7 @@ __pycache__/
 .mypy_cache/
 .env
 chroma_db/
+data/chroma/
 data/orders.db
 .DS_Store
 .langfuse/

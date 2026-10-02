@@ -20,7 +20,7 @@ def env_path(name: str, default: str) -> Path:
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "llama3.2")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-CHROMA_PERSIST_DIR = env_path("CHROMA_PERSIST_DIR", "chroma_db")
+CHROMA_PERSIST_DIR = env_path("CHROMA_PERSIST_DIR", "data/chroma")
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "supportiq")
 DOCS_DIR = env_path("DOCS_DIR", "data/docs")
 PDF_DIR = env_path("PDF_DIR", "data/pdfs")
@@ -40,7 +40,7 @@ RETRIEVE_K = 6
 MAX_REWRITE_RETRIES = 1
 MAX_REGENERATE_RETRIES = 1
 ROUTER_MIN_CONFIDENCE = float(os.getenv("ROUTER_MIN_CONFIDENCE", "0.55"))
-ROUTER_MODEL_PATH = env_path("ROUTER_MODEL_PATH", "models/router.joblib")
+ROUTER_MODEL_PATH = env_path("ROUTER_MODEL_PATH", "ai/models/router.joblib")
 
 INSUFFICIENT_INFO_MESSAGE = (
     "I don't have enough information to answer that reliably from the available sources. "

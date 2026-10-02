@@ -36,7 +36,7 @@ cp .env.example .env
 ollama list
 ```
 
-Lint Python with `ruff check ai backend eval` (`pyproject.toml`).
+Lint Python with `ruff check ai backend` (`pyproject.toml`).
 
 ## 1. Langfuse
 
@@ -64,7 +64,7 @@ under `data/docs/` is only used to author those PDFs.
 ```bash
 python -m ai.ingestion.make_nexcart_pdfs
 python -m ai.ingestion.embed_and_store
-python -m ai.router.train   # optional; writes models/router.joblib
+python -m ai.router.train   # optional; writes ai/models/router.joblib
 ```
 
 Or after the API is up: `curl -X POST http://127.0.0.1:8000/ingest`
@@ -118,7 +118,7 @@ steps/scores).
 ## 5. Golden-set eval
 
 ```bash
-python eval/run_eval.py
+python -m ai.eval.run_eval
 ```
 
 Routing accuracy by branch (`vectorstore` / `sql_lookup` / `web_search`), lexical
@@ -138,12 +138,19 @@ grade answer (regenerate once, then abstain).
 ## Repo layout
 
 ```
-frontend/                 React console
-backend/                  FastAPI
-ai/                       RAG pipeline
-ai/observability/         Langfuse + per-request token accounting
-ai/ingestion/             PDF layout extract, preview PNG, embed
-data/pdfs/                NexCart PDFs (ingest source)
-data/docs/                markdown used to generate the PDFs
-eval/                     golden set
+frontend/                 product console (React + Vite)
+backend/                  FastAPI (/chat /ingest /health /pdf-preview /traces)
+ai/                       RAG library
+  graph/                  LangGraph nodes and wiring
+  ingestion/              PDF extract, preview, embed, seed orders
+  retrieval/              hybrid BM25 + vectors
+  router/                 heuristic + sklearn + LLM fallback
+  models/                 trained router.joblib
+  eval/                   golden set, router labels, eval runner
+  observability/          Langfuse + token accounting
+  tools/                  SQLite orders, web search
+data/pdfs/                knowledge-base PDFs
+data/docs/                markdown used only to author the PDFs
+data/chroma/              Chroma index (gitignored, created at ingest)
+docs/                     how the system works
 ```

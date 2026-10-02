@@ -51,9 +51,13 @@ are explicit, not a pile of `if` statements.
 ## 4. Repo map
 
 ```
-frontend/     Vite + React — chat, PDF evidence, inspector
-backend/      FastAPI — /chat /ingest /health /pdf-preview /traces/{id}
-ai/           ingest, graph, hybrid retrieve, embed router, tools
+frontend/          product console
+backend/           FastAPI
+ai/                ingest, graph, retrieve, router, tools
+  models/          trained sklearn router (router.joblib)
+  eval/            golden questions + train labels
+data/pdfs/         knowledge base
+data/chroma/       vector index (local, gitignored)
 ```
 
 Vite proxies `/api` → `http://127.0.0.1:8000`.
@@ -75,7 +79,7 @@ data/pdfs/*.pdf
   embed with nomic-embed-text
         │
         ▼
-  persist Chroma  ./chroma_db
+  persist Chroma  ./data/chroma
 ```
 
 Two NexCart PDFs (generated, not downloaded):
@@ -226,8 +230,8 @@ Pieces you will keep meeting:
 source .venv/bin/activate
 docker compose -f docker-compose.langfuse.yml up -d
 python -m ai.ingestion.make_nexcart_pdfs
-python -m ai.ingestion.embed_and_store   # if chroma_db missing
-python -m ai.router.train                # if models/router.joblib missing
+python -m ai.ingestion.embed_and_store   # if data/chroma missing
+python -m ai.router.train                # if ai/models/router.joblib missing
 uvicorn backend.main:app --host 127.0.0.1 --port 8000
 # other terminal:
 cd frontend && npm install && npm run dev
@@ -247,7 +251,7 @@ After an answer, Observability → This run shows route, grades, llama3.2 tokens
 and nomic-embed tokens. Langfuse tab lists scores and graph step names (fetched
 through our API, not an iframe).
 
-Eval: `python eval/run_eval.py` (slow: 15 full graph runs).
+Eval: `python -m ai.eval.run_eval` (slow: 15 full graph runs).
 
 Stop:
 

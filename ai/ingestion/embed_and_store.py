@@ -41,7 +41,7 @@ def ingest(
 
     docs_dir = docs_dir or _env_path("DOCS_DIR", "data/docs")
     pdf_dir = _env_path("PDF_DIR", "data/pdfs")
-    persist_dir = persist_dir or _env_path("CHROMA_PERSIST_DIR", "chroma_db")
+    persist_dir = persist_dir or _env_path("CHROMA_PERSIST_DIR", "data/chroma")
     collection_name = collection_name or os.getenv("CHROMA_COLLECTION", "supportiq")
     orders_db = orders_db or _env_path("ORDERS_DB", "data/orders.db")
     embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")

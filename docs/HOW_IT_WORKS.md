@@ -47,17 +47,20 @@ are explicit, not a pile of `if` statements.
 8. **Production folders + console** — `ai/` (RAG), `backend/` (FastAPI), `frontend/` (React). Ruff is the Python linter.
 9. **Observability on the same screen** — this-run metrics + Langfuse graph steps via `GET /traces/{id}` (the Langfuse web UI cannot be iframed)
 10. **Token counts for both local models** — Ollama `prompt_eval_count` / `eval_count` for llama3.2 and nomic-embed-text, returned on `/chat` as `usage` and scored in Langfuse
+11. **Pluggable vector index** — `VECTOR_BACKEND=chroma|supabase`. Same hybrid retrieve (dense + lexical + RRF). Embeddings stay local `nomic-embed-text` (768-d). One backend per process; the flag does not copy vectors.
 
 ## 4. Repo map
 
 ```
 frontend/          product console
-backend/           FastAPI
+backend/           FastAPI  (uvicorn backend.main:app)
 ai/                ingest, graph, retrieve, router, tools
+  retrieval/       VectorIndex: Chroma or Supabase
+  retrieval/supabase.sql  one-time schema reset (not every ingest)
   models/          trained sklearn router (router.joblib)
   eval/            golden questions + train labels
 data/pdfs/         knowledge base
-data/chroma/       vector index (local, gitignored)
+data/chroma/       local Chroma index (gitignored)
 ```
 
 Vite proxies `/api` → `http://127.0.0.1:8000`.
@@ -79,8 +82,15 @@ data/pdfs/*.pdf
   embed with nomic-embed-text
         │
         ▼
-  persist Chroma  ./data/chroma
+  VECTOR_BACKEND (one store, not both)
+     chroma   → ./data/chroma
+     supabase → public.supportiq_chunks  (pgvector)
 ```
+
+SQL in `ai/retrieval/supabase.sql` is **schema only**: drop/recreate table,
+indexes, RLS, `match_chunks`, `search_chunks_fts`. Run it once in the SQL
+editor (or when you want a wipe). Ingest writes the 768-d rows; do not re-run
+the SQL for every PDF update.
 
 Two NexCart PDFs (generated, not downloaded):
 
@@ -144,14 +154,17 @@ question
 
 The `/chat` field `router_backend` is `heuristic`, `sklearn`, or `llm`.
 
-**Retrieve is not vectors-only.** `retrieve` calls `hybrid_search` (`ai/retrieval/hybrid.py`): Chroma similarity **plus** BM25 over the collection, fused with reciprocal rank fusion (RRF), plus a small boost if `doc_type` matches the question (e.g. “pair” → troubleshooting).
+**Retrieve is hybrid.** `retrieve` calls `hybrid_search` (`ai/retrieval/hybrid.py`).
+`VECTOR_BACKEND` chooses the store (`chroma` or `supabase`): dense neighbors plus
+a lexical list (BM25 on Chroma, Postgres FTS on Supabase), fused with RRF, plus a
+small boost if `doc_type` matches the question (e.g. “pair” → troubleshooting).
 
 ## 7. Graph nodes (what each step is)
 
 | Node | Role | Model / system |
 |---|---|---|
 | `classify_query` | Pick vectorstore / sql / web | heuristic → sklearn on embeddings → llama3.2 `RouteDecision` only if needed |
-| `retrieve` | Hybrid search k=4 | PDF layout chunks (page + polygon) via Chroma + BM25 |
+| `retrieve` | Hybrid search k=4 | PDF chunks via Chroma BM25 or Supabase pgvector+FTS |
 | `grade_documents` | Keep only useful chunks | llama3.2 + `DocumentGrades` |
 | `rewrite_query` | Better search query | llama3.2 + `RewrittenQuery` |
 | `sql_lookup` | Order id / email → row | SQLite |
@@ -177,7 +190,7 @@ Those totals are:
 - shown on Observability → **This run** (and copied onto the Langfuse tab)
 - written as Langfuse scores: `llama_prompt_tokens`, `llama_completion_tokens`, `nomic_embed_tokens`
 
-Ingest embeddings (building Chroma) are **not** billed to a chat request. Only
+Ingest embeddings (building the index) are **not** billed to a chat request. Only
 embeds that happen while answering.
 
 ## 9. Tools map
@@ -188,17 +201,18 @@ embeds that happen while answering.
 | Embeddings | Ollama `nomic-embed-text` | Local 768-d vectors |
 | Orchestration | LangGraph | Branches + cycles with limits |
 | Loaders / splitters | PyMuPDF + LangChain | PDF line boxes, then optional MD fallback |
-| Vector DB | Chroma embedded | No extra server |
-| Keyword retrieve | BM25 (`rank-bm25`) | Exact words fused with vectors |
+| Vector DB | Chroma or Supabase pgvector | `VECTOR_BACKEND` in `.env` |
+| Keyword retrieve | BM25 or Postgres FTS | Fused with vectors (RRF) |
 | Router | sklearn LogisticRegression | 3-way classify on nomic embeddings |
 | Orders | SQLite | Structured route |
 | Web | DuckDuckGo | No search API key |
 | Tracing | Langfuse v2 | Routing, grades, token scores |
 | API | FastAPI | `/chat` returns `trace_url`, `citations`, `usage` |
 | UI | React (`frontend/`) | Chat + PDF highlight + inspector |
-| Lint | Ruff | `ai`, `backend`, `eval` |
+| Lint | Ruff | `ai`, `backend` |
 
-Everything except web search runs on the laptop.
+Embeddings always run on the laptop. Web search and (optional) Supabase leave
+the machine. Orders stay in SQLite.
 
 ## 10. Core RAG concepts (so you can improve it)
 
@@ -213,8 +227,9 @@ Pieces you will keep meeting:
 2. **Embeddings** — map text to vectors so “return window” is near “30 days
    of delivery.” Query and documents **must use the same model**.
 3. **Top-k** — we take 4 neighbors. Higher k = more recall, more noise.
-4. **Hybrid retrieve** — vectors catch paraphrases; BM25 catches exact tokens
-   (“30 days”, “pair”). RRF merges both ranked lists.
+4. **Hybrid retrieve** — vectors catch paraphrases; lexical search catches exact
+   tokens (“30 days”, “pair”). Chroma uses BM25 in Python; Supabase uses
+   Postgres full-text. RRF merges both ranked lists.
 5. **Grounding** — the answer must be supported by retrieved text. That is
    what `grade_answer` is for. Citations are file, **page**, **bbox**, and a
    4-corner **polygon** (PDF points + 0–1 normalized) so you can highlight the
@@ -230,9 +245,10 @@ Pieces you will keep meeting:
 source .venv/bin/activate
 docker compose -f docker-compose.langfuse.yml up -d
 python -m ai.ingestion.make_nexcart_pdfs
-python -m ai.ingestion.embed_and_store   # if data/chroma missing
+python -m ai.ingestion.embed_and_store   # writes Chroma or Supabase per VECTOR_BACKEND
 python -m ai.router.train                # if ai/models/router.joblib missing
 uvicorn backend.main:app --host 127.0.0.1 --port 8000
+# not: uvicorn src.api.main:app
 # other terminal:
 cd frontend && npm install && npm run dev
 ```
@@ -264,7 +280,7 @@ docker compose -f docker-compose.langfuse.yml down
 
 - Tighten SQL/web generation so lexical + groundedness match routing
 - Human labels for *answer quality*, not only routing accuracy
-- Qdrant instead of Chroma; real orders API instead of SQLite
+- Move orders off SQLite onto a real orders API (or the same Supabase project)
 - Fourth route: past support tickets
 
 Start by reading `ai/graph/nodes.py` then `ai/graph/build_graph.py`.

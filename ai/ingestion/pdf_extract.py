@@ -194,21 +194,44 @@ def parse_layout(metadata: dict) -> dict:
             return None
 
     bbox = None
-    x0, y0, x1, y1 = _f("bbox_x0"), _f("bbox_y0"), _f("bbox_x1"), _f("bbox_y1")
-    if None not in (x0, y0, x1, y1):
-        bbox = {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
-    try:
-        polygon = json.loads(metadata.get("polygon") or "[]")
-    except json.JSONDecodeError:
-        polygon = []
-    try:
-        polygon_norm = json.loads(metadata.get("polygon_norm") or "[]")
-    except json.JSONDecodeError:
-        polygon_norm = []
-    points = [{"x": p[0], "y": p[1]} for p in polygon if isinstance(p, list) and len(p) == 2]
-    points_n = [
-        {"x": p[0], "y": p[1]} for p in polygon_norm if isinstance(p, list) and len(p) == 2
-    ]
+    raw_bbox = metadata.get("bbox")
+    if isinstance(raw_bbox, dict) and all(k in raw_bbox for k in ("x0", "y0", "x1", "y1")):
+        try:
+            bbox = {k: float(raw_bbox[k]) for k in ("x0", "y0", "x1", "y1")}
+        except (TypeError, ValueError):
+            bbox = None
+    if bbox is None:
+        x0, y0, x1, y1 = _f("bbox_x0"), _f("bbox_y0"), _f("bbox_x1"), _f("bbox_y1")
+        if None not in (x0, y0, x1, y1):
+            bbox = {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
+    polygon_raw = metadata.get("polygon") or "[]"
+    if isinstance(polygon_raw, list):
+        polygon = polygon_raw
+    else:
+        try:
+            polygon = json.loads(polygon_raw)
+        except json.JSONDecodeError:
+            polygon = []
+    polygon_norm_raw = metadata.get("polygon_norm") or "[]"
+    if isinstance(polygon_norm_raw, list):
+        polygon_norm = polygon_norm_raw
+    else:
+        try:
+            polygon_norm = json.loads(polygon_norm_raw)
+        except json.JSONDecodeError:
+            polygon_norm = []
+    points = []
+    for p in polygon:
+        if isinstance(p, dict) and "x" in p and "y" in p:
+            points.append({"x": float(p["x"]), "y": float(p["y"])})
+        elif isinstance(p, list) and len(p) == 2:
+            points.append({"x": p[0], "y": p[1]})
+    points_n = []
+    for p in polygon_norm:
+        if isinstance(p, dict) and "x" in p and "y" in p:
+            points_n.append({"x": float(p["x"]), "y": float(p["y"])})
+        elif isinstance(p, list) and len(p) == 2:
+            points_n.append({"x": p[0], "y": p[1]})
     return {
         "page": page,
         "page_width": _f("page_width"),

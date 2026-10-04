@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
-
-from langchain_chroma import Chroma
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
 from ai.config import (
-    CHROMA_COLLECTION,
-    CHROMA_PERSIST_DIR,
     INSUFFICIENT_INFO_MESSAGE,
     MAX_REGENERATE_RETRIES,
     MAX_REWRITE_RETRIES,
@@ -25,8 +20,9 @@ from ai.graph.schemas import (
     RouteDecision,
 )
 from ai.graph.state import GraphState, RetrievedDoc
-from ai.observability.usage import record_from_message, tracked_embeddings
+from ai.observability.usage import record_from_message
 from ai.retrieval.hybrid import hybrid_search
+from ai.retrieval.store import get_vector_index
 from ai.router.embed_router import route_question
 from ai.tools.sql_tool import extract_email, extract_order_id, format_orders, lookup_orders
 from ai.tools.web_search_tool import format_results, search_web
@@ -80,20 +76,6 @@ relevant=true if the answer addresses the user's question (partial answers still
 A short refusal that admits missing info is grounded=true and relevant=false."""
 
 
-@lru_cache(maxsize=1)
-def _vectorstore() -> Chroma:
-    embeddings = tracked_embeddings()
-    return Chroma(
-        persist_directory=str(CHROMA_PERSIST_DIR),
-        collection_name=CHROMA_COLLECTION,
-        embedding_function=embeddings,
-    )
-
-
-def reset_vectorstore_cache() -> None:
-    _vectorstore.cache_clear()
-
-
 def _docs_to_context(docs: list[RetrievedDoc]) -> str:
     if not docs:
         return "(no context)"
@@ -140,7 +122,7 @@ def classify_query(state: GraphState, config: RunnableConfig | None = None) -> d
 
 def retrieve(state: GraphState, config: RunnableConfig | None = None) -> dict:
     query = state.get("search_query") or state["question"]
-    documents = hybrid_search(_vectorstore(), query, k=RETRIEVE_K)
+    documents = hybrid_search(get_vector_index(), query, k=RETRIEVE_K)
     return {
         "documents": documents,
         "retrieved_docs": documents,

@@ -41,6 +41,10 @@ MAX_REWRITE_RETRIES = 1
 MAX_REGENERATE_RETRIES = 1
 ROUTER_MIN_CONFIDENCE = float(os.getenv("ROUTER_MIN_CONFIDENCE", "0.55"))
 ROUTER_MODEL_PATH = env_path("ROUTER_MODEL_PATH", "ai/models/router.joblib")
+VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "chroma").strip().lower()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_CHUNKS_TABLE = os.getenv("SUPABASE_CHUNKS_TABLE", "supportiq_chunks")
 
 INSUFFICIENT_INFO_MESSAGE = (
     "I don't have enough information to answer that reliably from the available sources. "

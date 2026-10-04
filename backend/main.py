@@ -5,18 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-from ai.config import (
-    CHROMA_COLLECTION,
-    CHROMA_PERSIST_DIR,
-    LANGFUSE_HOST,
-    OLLAMA_BASE_URL,
-    ORDERS_DB,
-)
+from ai.config import LANGFUSE_HOST, OLLAMA_BASE_URL, ORDERS_DB, VECTOR_BACKEND
 from ai.graph.build_graph import run_supportiq
-from ai.graph.nodes import _vectorstore, reset_vectorstore_cache
 from ai.ingestion.embed_and_store import ingest
 from ai.ingestion.pdf_preview import render_page_preview
 from ai.observability.langfuse_client import auth_ok, fetch_trace
+from ai.retrieval.store import get_vector_index, reset_vectorstore_cache
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -175,17 +169,17 @@ def get_health() -> HealthResponse:
     except Exception as exc:  # noqa: BLE001
         details["ollama"] = str(exc)
 
-    chroma_ok = False
+    vector_ok = False
     try:
-        count = _vectorstore()._collection.count()  # noqa: SLF001
-        chroma_ok = count > 0
-        details["chroma"] = {
-            "persist_dir": str(CHROMA_PERSIST_DIR),
-            "collection": CHROMA_COLLECTION,
+        index = get_vector_index()
+        count = index.count()
+        vector_ok = count > 0
+        details["vector"] = {
+            "backend": index.name,
             "count": count,
         }
     except Exception as exc:  # noqa: BLE001
-        details["chroma"] = str(exc)
+        details["vector"] = str(exc)
 
     langfuse_ok = False
     try:
@@ -195,11 +189,12 @@ def get_health() -> HealthResponse:
         details["langfuse"] = str(exc)
 
     details["orders_db"] = str(ORDERS_DB)
-    status = "ok" if (ollama_ok and chroma_ok) else "degraded"
+    details["vector_backend"] = VECTOR_BACKEND
+    status = "ok" if (ollama_ok and vector_ok) else "degraded"
     return HealthResponse(
         status=status,
         ollama=ollama_ok,
-        chroma=chroma_ok,
+        chroma=vector_ok,
         langfuse=langfuse_ok,
         details=details,
     )
